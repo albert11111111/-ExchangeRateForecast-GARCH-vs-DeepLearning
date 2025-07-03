@@ -1430,6 +1430,9 @@ if __name__ == "__main__":
     parser.add_argument('--target', type=str, default='rate', help='原始汇率目标变量列名')
     parser.add_argument('--seq_len', type=int, default=31, help='ARIMA+GARCH历史对数收益率长度')
     parser.add_argument('--step_size', type=int, default=1, help='滚动窗口步长')
+    parser.add_argument('--step_size', type=int, default=1, help='滚动窗口步长')
+    
+    
     
     args = parser.parse_args()
     main(args) 
