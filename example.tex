@@ -1,0 +1,52 @@
+%!TEX program = xelatex
+% 完整编译: xelatex -> biber -> xelatex -> xelatex
+\documentclass[lang=cn]{elegantpaper}
+
+\title{APA引用格式示例文档}
+\author{张三 \\ XX大学 \and 李四 \\ YY研究所}
+\institute{\href{https://www.example.com}{示例研究组}}
+
+\version{1.0}
+\date{\zhdate{2024/03/21}}
+
+% 参考文献
+\addbibresource{references.bib}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本文展示了如何在ElegantPaper模板中使用APA引用格式。通过实例说明了不同类型的引用方法，包括单作者引用、多作者引用、直接引用和间接引用等。本文还介绍了如何正确设置参考文献格式，以符合APA规范。
+\keywords{APA格式, 学术写作, 参考文献}
+\end{abstract}
+
+\section{引言}
+
+学术写作中，规范的引用格式非常重要。APA格式是社会科学领域最常用的引用格式之一\parencite{smith2020}。根据\textcite{johnson2019}的研究，正确的引用格式可以帮助读者更好地理解和验证研究成果。
+
+\section{引用方法示例}
+
+\subsection{单作者引用}
+
+当引用单个作者的工作时，可以使用作者年份格式。例如，\textcite{smith2020}发现...，或者这个发现很重要\parencite{smith2020}。
+
+\subsection{多作者引用}
+
+对于多作者的工作，首次引用时需要列出所有作者\parencite{johnson2019}。之后的引用可以使用第一作者加"等"来表示。多项研究\parencite{smith2020,johnson2019,wilson2021}都支持这一观点。
+
+\subsection{直接引用}
+
+直接引用时需要包含页码：
+
+\begin{quote}
+"引用的具体内容"\parencite[p.~123]{smith2020}
+\end{quote}
+
+\section{结论}
+
+通过本文的示例，我们可以看到APA引用格式的基本用法。更多详细的引用规范可以参考\textcite{wilson2021}的研究。
+
+\printbibliography[heading=bibintoc,title=参考文献]
+
+\end{document} 

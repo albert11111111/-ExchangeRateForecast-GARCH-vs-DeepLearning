@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-ARIMA+GARCH时间序列预测系统 - 多步预测版本
+ARIMA+GARCH时间序列预测系统 - 多步预测版本 (英镑兑人民币)
 ================================================================
 
 功能说明:
 --------
-这是一个专门用于美元兑日元汇率预测的ARIMA+GARCH模型系统，支持多种预测步长。
+这是一个专门用于英镑兑人民币汇率预测的ARIMA+GARCH模型系统，支持多种预测步长。
 
 主要特性:
 --------
@@ -19,28 +19,29 @@ ARIMA+GARCH时间序列预测系统 - 多步预测版本
 3. 两种均值模型:
    - Constant均值: 使用常数均值
    - AR均值: 使用自回归均值
-4. 滚动窗口预测: 使用固定150点测试集
+4. 滚动窗口预测: 使用动态15%测试集
 5. 全面诊断: Ljung-Box检验、正态性检验、残差分析
 
 输出结果:
 --------
-1. 预测结果图表 (plot_price_level_*.png)
-2. 模型参数文件 (model_params_*.json)
-3. 完整结果数据 (results_*.pkl)
-4. 评估指标汇总表 (summary_table_*.csv)
+1. 模型参数文件 (model_params_*.json)
+2. 完整结果数据 (results_*.pkl)
+3. 评估指标汇总表 (summary_table_*.csv)
 
 使用方法:
 --------
-python run_arima_garch_jpy_last150test.py --root_path ./dataset/ --data_path sorted_output_file.csv --target rate
+python run_arima_garch_jpy_last150test.py --root_path ./dataset/ --data_path 英镑兑人民币_short_series.csv --target rate
 
 作者: 时间序列预测系统
-版本: 多步预测增强版 v2.0
+版本: 英镑人民币优化版 v3.0
 日期: 2024
 """
 
 import os
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # 使用非交互式后端
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
@@ -60,16 +61,13 @@ from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.stats.diagnostic import acorr_ljungbox
 import json
 
-# 设置中文字体
-try:
-    font = FontProperties(fname=r"C:\Windows\Fonts\SimHei.ttf")
-    plt.rcParams['font.family'] = ['SimHei']
-    plt.rcParams['axes.unicode_minus'] = False
-except:
-    print("警告：无法加载中文字体，图表中的中文可能显示为方框")
-
-# 忽略警告
+# 完全禁用所有警告
 warnings.filterwarnings('ignore')
+import logging
+logging.getLogger().setLevel(logging.ERROR)
+
+# 禁用matplotlib警告
+plt.rcParams.update({'figure.max_open_warning': 0})
 
 def load_and_prepare_data(root_path, data_path, target_col_name, log_return_col_name='log_return'):
     """
@@ -121,7 +119,6 @@ def load_and_prepare_data(root_path, data_path, target_col_name, log_return_col_
     if not pd.api.types.is_numeric_dtype(df[target_col_name]):
         raise ValueError(f"目标列 '{target_col_name}' 必须是数值类型.")
     if (df[target_col_name] <= 0).any():
-        print(f"警告: 目标列 '{target_col_name}' 包含零或负数值，可能导致对数收益率计算问题。正在移除这些行...")
         df = df[df[target_col_name] > 0].reset_index(drop=True)
         if df.empty:
             raise ValueError("移除零或负数值后，数据为空。")
@@ -153,8 +150,6 @@ def perform_stationarity_test(series, series_name="序列"):
     else:
         print(f"结论: p-值 ({adf_result[1]:.4f}) > 0.05, 不能拒绝原假设，{series_name} 大概率是非平稳的。")
     print("-" * 50)
-
-
 
 def perform_model_diagnostics(residuals, model_name="Unknown"):
     """
@@ -233,7 +228,6 @@ def perform_model_diagnostics(residuals, model_name="Unknown"):
         }
         
     except Exception as e:
-        print(f"执行模型诊断时出错: {str(e)}")
         return None
 
 def train_and_forecast_arima_garch(scaled_log_return_series_history, original_log_return_series, model_type, seq_len, pred_len, p_ar=1, q_ma=0, save_params=False):
@@ -462,13 +456,11 @@ def evaluate_model(y_true_prices, y_pred_prices):
     # 修复: 添加长度一致性检查
     if len(y_true_prices) != len(y_pred_prices):
         min_length = min(len(y_true_prices), len(y_pred_prices))
-        print(f"警告: 评估时发现数组长度不一致 - 真实值: {len(y_true_prices)}, 预测值: {len(y_pred_prices)}, 截取到: {min_length}")
         y_true_prices = y_true_prices[:min_length]
         y_pred_prices = y_pred_prices[:min_length]
     
     # 修复: 检查数组是否为空
     if len(y_true_prices) == 0 or len(y_pred_prices) == 0:
-        print("警告: 评估时发现空数组，返回默认指标")
         return {'MSE': float('inf'), 'RMSE': float('inf'), 'MAE': float('inf'), 'MAX_AE': float('inf'), 'MAPE': float('inf'), 'R2': -float('inf')}
     
     if not np.all(np.isfinite(y_pred_prices)):
@@ -487,7 +479,7 @@ def evaluate_model(y_true_prices, y_pred_prices):
     
     return {'MSE': mse, 'RMSE': rmse, 'MAE': mae, 'MAX_AE': max_ae, 'MAPE': mape, 'R2': r2}
 
-def run_naive_baseline_forecast(data_df, original_price_col_name, pred_len, step_size, fixed_test_set_size=150):
+def run_naive_baseline_forecast(data_df, original_price_col_name, pred_len, step_size, test_set_ratio=0.15):
     """
     朴素基线预测函数 - 修复版本
     
@@ -499,9 +491,9 @@ def run_naive_baseline_forecast(data_df, original_price_col_name, pred_len, step
     """
     original_prices = data_df[original_price_col_name].values
     num_total_points = len(original_prices)
+    fixed_test_set_size = int(num_total_points * test_set_ratio)
 
     if num_total_points <= fixed_test_set_size:
-        print(f"警告: 数据点总数 ({num_total_points}) 不足以支持 {fixed_test_set_size} 点的测试集。")
         return np.array([]), np.array([])
 
     test_start_idx = num_total_points - fixed_test_set_size
@@ -538,14 +530,14 @@ def run_naive_baseline_forecast(data_df, original_price_col_name, pred_len, step
     pred_values = np.concatenate(all_predicted_price_levels_collected)
     
     # 调试信息: 打印数组长度以便检查
-    print(f"朴素基线预测 - 真实值长度: {len(true_values)}, 预测值长度: {len(pred_values)}")
+    # print(f"朴素基线预测 - 真实值长度: {len(true_values)}, 预测值长度: {len(pred_values)}")
     
     # 修复: 如果仍然长度不匹配，截取到较短的长度
     min_length = min(len(true_values), len(pred_values))
     return true_values[:min_length], pred_values[:min_length]
 
 def rolling_forecast(data_df, original_price_col_name, log_return_col_name, 
-                     model_type, seq_len, pred_len, step_size=1, p=1, q=0, fixed_test_set_size=150):
+                     model_type, seq_len, pred_len, step_size=1, p=1, q=0, test_set_ratio=0.15):
     """
     滚动窗口多步预测函数
     
@@ -586,8 +578,8 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
         AR项阶数
     q : int, 默认=0
         MA项阶数
-    fixed_test_set_size : int, 默认=150
-        固定测试集大小
+    test_set_ratio : float, 默认=0.15
+        测试集比例
         
     返回:
     ----
@@ -615,10 +607,10 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
     scaled_log_returns = log_return_scaler.fit_transform(log_returns.reshape(-1, 1)).flatten()
     
     num_total_log_points = len(scaled_log_returns)
+    fixed_test_set_size = int(num_total_log_points * test_set_ratio)
     test_start_idx_log = num_total_log_points - fixed_test_set_size
     
     if test_start_idx_log < 0: 
-        print(f"警告: 模型 {model_type} 计算的 test_start_idx_log ({test_start_idx_log}) < 0。没有足够的测试数据。")
         return np.array([]), np.array([]), None, None
 
     all_true_price_levels_collected = []
@@ -801,7 +793,7 @@ def train_and_forecast_pure_arma(scaled_log_return_series_history, seq_len, pred
         return np.zeros(pred_len), None, None
 
 def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_name, 
-                     seq_len, pred_len, step_size=1, p=1, q=0, fixed_test_set_size=150):
+                     seq_len, pred_len, step_size=1, p=1, q=0, test_set_ratio=0.15):
     log_returns = data_df[log_return_col_name].values
     original_prices = data_df[original_price_col_name].values
 
@@ -809,10 +801,10 @@ def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_
     scaled_log_returns = log_return_scaler.fit_transform(log_returns.reshape(-1, 1)).flatten()
     
     num_total_log_points = len(scaled_log_returns)
+    fixed_test_set_size = int(num_total_log_points * test_set_ratio)
     test_start_idx_log = num_total_log_points - fixed_test_set_size
     
     if test_start_idx_log < 0:
-        print(f"警告: 纯ARMA模型计算的 test_start_idx_log ({test_start_idx_log}) < 0。没有足够的测试数据。")
         return np.array([]), np.array([]), None, None
 
     all_true_price_levels_collected = []
@@ -917,8 +909,8 @@ def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_
     return true_values, pred_values, first_window_model_info, lb_test_result
 
 def main(args):
-    log_return_col = 'log_return_usd_jpy' 
-    fixed_test_set_size = 150
+    log_return_col = 'log_return_gbp_cny' 
+    test_set_ratio = 0.15  # 使用15%作为测试集
 
     try:
         data_df = load_and_prepare_data(args.root_path, args.data_path, args.target, log_return_col)
@@ -926,11 +918,13 @@ def main(args):
         print(f"数据加载或预处理失败: {e}")
         return
 
+    num_total_points = len(data_df)
+    fixed_test_set_size = int(num_total_points * test_set_ratio)
+    
     if len(data_df) <= fixed_test_set_size:
         print(f"错误: 数据点总数 ({len(data_df)}) 不足以分割出 {fixed_test_set_size} 点的测试集。")
         return
         
-    num_total_points = len(data_df)
     num_train_points_for_first_window = num_total_points - fixed_test_set_size
     
     if num_train_points_for_first_window < args.seq_len:
@@ -938,7 +932,7 @@ def main(args):
         return
 
     if not data_df[log_return_col].empty:
-        perform_stationarity_test(data_df[log_return_col], series_name=f"{args.target} 的对数收益率 (USDJPY)")
+        perform_stationarity_test(data_df[log_return_col], series_name=f"{args.target} 的对数收益率 (GBPCNY)")
     else:
         print("对数收益率序列为空。")
         return
@@ -985,7 +979,7 @@ def main(args):
     # ARMA参数组合：(p=AR阶数, q=MA阶数)
     arma_params = [(1, 0), (1, 1), (2, 0)]  # 扩展为完整的参数组合测试
     # 序列长度测试：用于滚动窗口的历史数据长度
-    seq_lens_to_test = [31]  # 可扩展为 [1000, 500, 250, 125, 62, 31]
+    seq_lens_to_test = [1000, 500, 250, 125]  # 扩展的训练窗口大小
     
     best_overall_metrics = {'MSE': float('inf'), 'model': None, 'p': None, 'q': None, 'seq_len': None, 'metrics': None}
     all_configs_comparison = {}
@@ -1035,7 +1029,7 @@ def main(args):
             print(f"{'='*80}")
             
             # 为每个预测步长创建单独的结果目录
-            results_dir = f'arima_garch_results_logret_USDJPY_seq{current_seq_len}_{pred_len}step_last{fixed_test_set_size}test'
+            results_dir = f'arima_garch_results_logret_GBPCNY_seq{current_seq_len}_{pred_len}step_last{int(test_set_ratio*100)}pct_test'
             os.makedirs(results_dir, exist_ok=True)
             
             run_results = {}
@@ -1045,7 +1039,7 @@ def main(args):
             print(f"\n{'-'*50}\n模型: Naive Baseline (PrevDay) - {pred_len}步预测\n{'-'*50}")
             start_time_naive = time.time()
             naive_actuals, naive_preds = run_naive_baseline_forecast(
-                data_df, args.target, pred_len, args.step_size, fixed_test_set_size
+                data_df, args.target, pred_len, args.step_size, test_set_ratio
             )
             elapsed_time_naive = time.time() - start_time_naive
 
@@ -1078,7 +1072,7 @@ def main(args):
                     # Pure ARMA模型
                     actuals, preds, first_window_model_info, lb_test_result = rolling_forecast_pure_arma(
                         data_df, args.target, log_return_col, current_seq_len, pred_len, 
-                        args.step_size, p, q, fixed_test_set_size=fixed_test_set_size
+                        args.step_size, p, q, test_set_ratio=test_set_ratio
                     )
                 else:
                     # GARCH族模型 - 构造传统的模型类型字符串
@@ -1089,7 +1083,7 @@ def main(args):
                     
                     actuals, preds, first_window_model_info, lb_test_result = rolling_forecast(
                         data_df, args.target, log_return_col, legacy_model_type,
-                        current_seq_len, pred_len, args.step_size, p=p, q=q, fixed_test_set_size=fixed_test_set_size
+                        current_seq_len, pred_len, args.step_size, p=p, q=q, test_set_ratio=test_set_ratio
                     )
                 
                 elapsed_time = time.time() - start_time
@@ -1119,7 +1113,7 @@ def main(args):
             # ==========================================
             if run_results:
                 # 保存模型参数到JSON文件
-                model_params_file = os.path.join(results_dir, f'model_params_USDJPY_seq{current_seq_len}_{pred_len}step.json')
+                model_params_file = os.path.join(results_dir, f'model_params_GBPCNY_seq{current_seq_len}_{pred_len}step.json')
                 model_params_dict = {}
                 for model_name, result_data in run_results.items():
                     if 'first_window_info' in result_data and result_data['first_window_info'] is not None:
@@ -1129,11 +1123,8 @@ def main(args):
                     with open(model_params_file, 'w', encoding='utf-8') as f:
                         json.dump(model_params_dict, f, indent=4, ensure_ascii=False)
                 
-                # 生成可视化图表
-                plot_results(run_results, pred_len, results_dir, f"seq{current_seq_len}_{pred_len}step")
-                
                 # 保存完整结果数据
-                with open(os.path.join(results_dir, f'results_USDJPY_seq{current_seq_len}_pred_len_{pred_len}.pkl'), 'wb') as f:
+                with open(os.path.join(results_dir, f'results_GBPCNY_seq{current_seq_len}_pred_len_{pred_len}.pkl'), 'wb') as f:
                     pickle.dump(run_results, f)
                 
                 # 生成汇总表格
@@ -1234,143 +1225,7 @@ def main(args):
 
 
 
-def plot_results(results_dict, pred_len, results_dir_path, config_label):
-    """
-    绘制预测结果并保存图像，包含置信区间和多步预测效果的可视化
-    修复：限制图像尺寸以避免过大的图像文件
-    """
-    # 按模型类型排序
-    sorted_model_keys = []
-    
-    # 优先排序朴素基线模型
-    if "Naive Baseline (PrevDay)" in results_dict: 
-        sorted_model_keys.append("Naive Baseline (PrevDay)")
-    
-    # 确保Pure ARMA排在其他GARCH族模型前面
-    other_keys = [k for k in results_dict.keys() if k != "Naive Baseline (PrevDay)"]
-    pure_arma_keys = sorted([k for k in other_keys if "Pure ARMA" in k])
-    sorted_model_keys.extend(pure_arma_keys)
-    
-    # 添加其余模型
-    garch_keys = sorted([k for k in other_keys if k not in pure_arma_keys])
-    sorted_model_keys.extend(garch_keys)
-
-    num_models_to_plot = len(sorted_model_keys)
-    if num_models_to_plot == 0: 
-        return
-    
-    # 修复：限制图像高度，避免过大尺寸
-    # 每个模型最多4英寸高度，总高度不超过32英寸
-    max_height_per_model = 4
-    max_total_height = 32
-    
-    # 如果模型太多，分批绘制
-    models_per_batch = min(num_models_to_plot, max(1, max_total_height // max_height_per_model))
-    
-    for batch_idx in range(0, num_models_to_plot, models_per_batch):
-        batch_models = sorted_model_keys[batch_idx:batch_idx + models_per_batch]
-        batch_size = len(batch_models)
-        
-        # 为每个批次创建图像
-        plt.figure(figsize=(20, max_height_per_model * batch_size)) 
-    
-        for batch_plot_idx, model_type_key in enumerate(batch_models):
-            result_data = results_dict.get(model_type_key)
-            if not (result_data and 'true_values' in result_data and 'predictions' in result_data and \
-                    len(result_data['true_values']) > 0 and len(result_data['predictions']) > 0):
-                print(f"警告: 模型 {model_type_key} 数据不完整，跳过绘图。")
-                continue
-                
-            true_vals = np.asarray(result_data['true_values']).flatten()
-            pred_vals = np.asarray(result_data['predictions']).flatten()
-            
-            # 计算预测的置信区间（使用移动标准差作为不确定性估计）
-            window_size = min(pred_len * 3, len(true_vals))
-            rolling_std = pd.Series(np.abs(true_vals - pred_vals)).rolling(window=window_size, center=True).std()
-            confidence_factor = 1.96  # 95% 置信区间
-            lower_bound = pred_vals - confidence_factor * rolling_std
-            upper_bound = pred_vals + confidence_factor * rolling_std
-            
-            # 总体视图
-            plt.subplot(batch_size, 2, 2*batch_plot_idx + 1)
-            
-            # 计算要显示的点数
-            max_pts = min(1000, len(true_vals))
-            display_step = max(1, max_pts // 100)  # 确保不会显示太多点
-            
-            # 绘制置信区间
-            plt.fill_between(range(len(pred_vals[:max_pts:display_step])),
-                            lower_bound[:max_pts:display_step],
-                            upper_bound[:max_pts:display_step],
-                            color='gray', alpha=0.2, label='95% 置信区间')
-            
-            # 绘制实际值和预测值
-            plt.plot(true_vals[:max_pts:display_step], 
-                    label='实际价格', color='blue', marker='o', markersize=3)
-            plt.plot(pred_vals[:max_pts:display_step], 
-                    label='预测价格', color='red', linestyle='--', marker='x', markersize=3)
-            
-            plt.title(f'{model_type_key} ({config_label})\n整体预测效果', fontsize=12)
-            plt.xlabel('时间步长 (测试集样本)', fontsize=10)
-            plt.ylabel('汇率', fontsize=10)
-            plt.legend(fontsize=10, loc='upper right')
-            plt.grid(True, linestyle='--', alpha=0.7)
-            
-            # 局部预测视图
-            plt.subplot(batch_size, 2, 2*batch_plot_idx + 2)
-            
-            # 选择一个代表性的预测窗口进行展示
-            window_start = len(true_vals) // 2  # 从中间位置开始
-            local_window_size = pred_len * 3  # 显示3个预测周期
-            
-            # 绘制局部预测窗口的置信区间
-            plt.fill_between(range(window_start, window_start + local_window_size),
-                            lower_bound[window_start:window_start + local_window_size],
-                            upper_bound[window_start:window_start + local_window_size],
-                            color='gray', alpha=0.2, label='95% 置信区间')
-            
-            # 绘制局部实际值和预测值
-            plt.plot(range(window_start, window_start + local_window_size),
-                    true_vals[window_start:window_start + local_window_size],
-                    label='实际价格', color='blue', marker='o')
-            plt.plot(range(window_start, window_start + local_window_size),
-                    pred_vals[window_start:window_start + local_window_size],
-                    label='预测价格', color='red', linestyle='--', marker='x')
-            
-            # 标记预测步长
-            for i in range(window_start, window_start + local_window_size - pred_len + 1, pred_len):
-                plt.axvspan(i, i + pred_len, color='yellow', alpha=0.1)
-                plt.axvline(x=i, color='green', linestyle=':', alpha=0.5)
-                if i == window_start:
-                    plt.annotate(f'预测步长: {pred_len}天',
-                               xy=(i, plt.ylim()[0]),
-                               xytext=(i, plt.ylim()[0] - (plt.ylim()[1] - plt.ylim()[0])*0.1),
-                               arrowprops=dict(facecolor='black', shrink=0.05),
-                               bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
-            
-            plt.title(f'{model_type_key} ({config_label})\n局部预测效果展示', fontsize=12)
-            plt.xlabel('时间步长', fontsize=10)
-            plt.ylabel('汇率', fontsize=10)
-            plt.legend(fontsize=10, loc='upper right')
-            plt.grid(True, linestyle='--', alpha=0.7)
-            
-            # 添加说明文字
-            plt.figtext(0.02, 0.98 - (batch_plot_idx)/batch_size, 
-                       f"说明:\n"
-                       f"1. 蓝线(实线+圆点): 实际价格\n"
-                       f"2. 红线(虚线+叉号): 预测价格\n"
-                       f"3. 灰色区域: 95% 置信区间\n"
-                       f"4. 黄色区域: {pred_len}天预测窗口\n"
-                       f"5. 绿色虚线: 预测起始点",
-                       fontsize=8, bbox=dict(facecolor='white', alpha=0.8))
-        
-        plt.tight_layout()
-        
-        # 为每个批次保存单独的图像文件
-        batch_suffix = f"_batch{batch_idx//models_per_batch + 1}" if num_models_to_plot > models_per_batch else ""
-        plt.savefig(os.path.join(results_dir_path, f'plot_price_level_{config_label}_pred_len_{pred_len}{batch_suffix}.png'), 
-                    dpi=100, bbox_inches='tight')  # 进一步降低DPI以减小文件大小
-        plt.close()
+# 图表绘制功能已禁用
 
 def generate_summary_table(all_results_summary, results_dir_path, arima_params_label):
     summary_data = {'Model': []}
@@ -1424,11 +1279,11 @@ def generate_summary_table(all_results_summary, results_dir_path, arima_params_l
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='ARIMA+GARCH汇率预测 (USDJPY, 对数收益率, 多步预测, 最后150点测试)')
+    parser = argparse.ArgumentParser(description='ARIMA+GARCH汇率预测 (GBPCNY, 对数收益率, 多步预测, 15%测试集)')
     parser.add_argument('--root_path', type=str, default='./dataset/', help='数据根目录')
-    parser.add_argument('--data_path', type=str, default='sorted_output_file.csv', help='数据文件路径')
+    parser.add_argument('--data_path', type=str, default='英镑兑人民币_short_series.csv', help='数据文件路径')
     parser.add_argument('--target', type=str, default='rate', help='原始汇率目标变量列名')
-    parser.add_argument('--seq_len', type=int, default=31, help='ARIMA+GARCH历史对数收益率长度')
+    parser.add_argument('--seq_len', type=int, default=125, help='ARIMA+GARCH历史对数收益率长度')
     parser.add_argument('--step_size', type=int, default=1, help='滚动窗口步长')
     
     args = parser.parse_args()
