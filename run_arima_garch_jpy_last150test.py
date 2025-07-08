@@ -30,7 +30,7 @@ ARIMA+GARCH时间序列预测系统 - 多步预测版本 (英镑兑人民币)
 
 使用方法:
 --------
-python run_arima_garch_jpy_last150test.py --root_path ./dataset/ --data_path 英镑兑人民币_short_series.csv --target rate
+python run_arima_garch_jpy_last150test.py --root_path ./dataset/ --data_path 英镑兑人民币_short_series.csv --target Close
 
 作者: 时间序列预测系统
 版本: 英镑人民币优化版 v3.0
@@ -356,7 +356,7 @@ def train_and_forecast_arima_garch(scaled_log_return_series_history, original_lo
                     garch_m_forecasts = const_param + risk_premium_coef * predicted_std_dev
                     return garch_m_forecasts, model_params, diagnostics_result
                 except Exception as e:
-                    print(f"警告: 自定义GARCH-M实现失败 ({str(e)}),使用标准GARCH(1,1)。")
+                    # print(f"警告: 自定义GARCH-M实现失败 ({str(e)}),使用标准GARCH(1,1)。")
                     standard_garch = arch_model(train_seq, mean='Constant', vol='GARCH', p=1, q=1)
                     res = standard_garch.fit(disp='off', show_warning=False)
                     forecast_obj = res.forecast(horizon=pred_len)
@@ -417,25 +417,25 @@ def train_and_forecast_arima_garch(scaled_log_return_series_history, original_lo
                 return forecast_obj.mean.values[0, :pred_len], model_params, diagnostics_result
                 
             except Exception as e_garch_fit:
-                print(f"警告: {model_type} 模型拟合或预测失败 ({str(e_garch_fit)})。尝试使用纯ARMA模型。")
+                # print(f"警告: {model_type} 模型拟合或预测失败 ({str(e_garch_fit)})。尝试使用纯ARMA模型。")
                 try:
                     arima_model = ARIMA(scaled_log_return_series_history[-seq_len:], order=(p_ar, 0, q_ma))
                     arima_results = arima_model.fit()
                     forecast_val = arima_results.forecast(steps=pred_len)
                     return np.array(forecast_val.values if isinstance(forecast_val, pd.Series) else forecast_val).flatten()[:pred_len], None, None
                 except Exception as e_arima_fallback:
-                    print(f"警告: {model_type}的纯ARMA({p_ar},0,{q_ma})回退失败: {e_arima_fallback}。返回零预测。")
+                    # print(f"警告: {model_type}的纯ARMA({p_ar},0,{q_ma})回退失败: {e_arima_fallback}。返回零预测。")
                     return np.zeros(pred_len), None, None
                     
     except Exception as e_garch_m:
-        print(f"警告: {model_type} 模型拟合或预测失败 ({str(e_garch_m)})。尝试使用纯ARMA模型。")
+        # print(f"警告: {model_type} 模型拟合或预测失败 ({str(e_garch_m)})。尝试使用纯ARMA模型。")
         try:
             arima_model = ARIMA(scaled_log_return_series_history[-seq_len:], order=(p_ar, 0, q_ma))
             arima_results = arima_model.fit()
             forecast_val = arima_results.forecast(steps=pred_len)
             return np.array(forecast_val.values if isinstance(forecast_val, pd.Series) else forecast_val).flatten()[:pred_len], None, None
         except Exception as e_arima:
-            print(f"警告: {model_type}的纯ARMA({p_ar},0,{q_ma})回退失败: {e_arima}。返回零预测。")
+            # print(f"警告: {model_type}的纯ARMA({p_ar},0,{q_ma})回退失败: {e_arima}。返回零预测。")
             return np.zeros(pred_len), None, None
 
     return forecast_obj.mean.values[0, :pred_len], model_params, diagnostics_result
@@ -449,6 +449,17 @@ def evaluate_model(y_true_prices, y_pred_prices):
     1. 添加数组长度一致性检查
     2. 处理NaN/Inf值
     3. 确保数组形状正确
+    4. 添加MSPE（均方百分比误差）指标
+    
+    评估指标说明:
+    -----------
+    MSE: 均方误差
+    RMSE: 均方根误差
+    MAE: 平均绝对误差
+    MAX_AE: 最大绝对误差
+    MAPE: 平均绝对百分比误差
+    MSPE: 均方百分比误差
+    R2: 决定系数
     """
     y_true_prices = np.asarray(y_true_prices).flatten()
     y_pred_prices = np.asarray(y_pred_prices).flatten()
@@ -461,7 +472,7 @@ def evaluate_model(y_true_prices, y_pred_prices):
     
     # 修复: 检查数组是否为空
     if len(y_true_prices) == 0 or len(y_pred_prices) == 0:
-        return {'MSE': float('inf'), 'RMSE': float('inf'), 'MAE': float('inf'), 'MAX_AE': float('inf'), 'MAPE': float('inf'), 'R2': -float('inf')}
+        return {'MSE': float('inf'), 'RMSE': float('inf'), 'MAE': float('inf'), 'MAX_AE': float('inf'), 'MAPE': float('inf'), 'MSPE': float('inf'), 'R2': -float('inf')}
     
     if not np.all(np.isfinite(y_pred_prices)):
         finite_preds = y_pred_prices[np.isfinite(y_pred_prices)]
@@ -474,10 +485,16 @@ def evaluate_model(y_true_prices, y_pred_prices):
     max_ae = np.max(np.abs(y_true_prices - y_pred_prices))  # 添加MAX AE指标
     r2 = r2_score(y_true_prices, y_pred_prices)
     
+    # 计算百分比误差指标时需要避免除零
     mask = np.abs(y_true_prices) > 1e-9
+    
+    # MAPE: 平均绝对百分比误差
     mape = np.mean(np.abs((y_true_prices[mask] - y_pred_prices[mask]) / y_true_prices[mask])) * 100 if np.sum(mask) > 0 else np.nan
     
-    return {'MSE': mse, 'RMSE': rmse, 'MAE': mae, 'MAX_AE': max_ae, 'MAPE': mape, 'R2': r2}
+    # MSPE: 均方百分比误差
+    mspe = np.mean(((y_true_prices[mask] - y_pred_prices[mask]) / y_true_prices[mask]) ** 2) * 100 if np.sum(mask) > 0 else np.nan
+    
+    return {'MSE': mse, 'RMSE': rmse, 'MAE': mae, 'MAX_AE': max_ae, 'MAPE': mape, 'MSPE': mspe, 'R2': r2}
 
 def run_naive_baseline_forecast(data_df, original_price_col_name, pred_len, step_size, test_set_ratio=0.15):
     """
@@ -650,22 +667,22 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
 
         if not isinstance(predicted_std_log_returns_raw, np.ndarray) or \
            predicted_std_log_returns_raw.shape != (pred_len,):
-            print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了格式/形状错误的预测: {predicted_std_log_returns_raw}.")
+            # print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了格式/形状错误的预测: {predicted_std_log_returns_raw}.")
             use_arma_fallback_in_rolling = True
         elif np.any(np.isnan(predicted_std_log_returns_raw)) or \
              np.any(np.isinf(predicted_std_log_returns_raw)):
-            print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了 NaN/Inf 预测: {predicted_std_log_returns_raw}.")
+            # print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了 NaN/Inf 预测: {predicted_std_log_returns_raw}.")
             use_arma_fallback_in_rolling = True
         elif np.any(np.abs(predicted_std_log_returns_raw) > extreme_value_threshold):
-            print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了极端值预测 (abs > {extreme_value_threshold}): {predicted_std_log_returns_raw}.")
-            if len(train_seq_actually_used_by_model) > 0:
-                print(f"       触发极端值的训练序列摘要: len={len(train_seq_actually_used_by_model)}, mean={np.mean(train_seq_actually_used_by_model):.4f}, std={np.std(train_seq_actually_used_by_model):.4f}, min={np.min(train_seq_actually_used_by_model):.4f}, max={np.max(train_seq_actually_used_by_model):.4f}")
-            else:
-                print(f"       触发极端值的训练序列为空或长度不足 (传递给模型的序列长度为 {len(current_history_for_model_input)}, 模型内部截取最后 {seq_len})。")
+            # print(f"警告: {model_type} (在滚动窗口索引 {i}, 训练序列实际使用长度 {len(train_seq_actually_used_by_model)}) 返回了极端值预测 (abs > {extreme_value_threshold}): {predicted_std_log_returns_raw}.")
+            # if len(train_seq_actually_used_by_model) > 0:
+            #     print(f"       触发极端值的训练序列摘要: len={len(train_seq_actually_used_by_model)}, mean={np.mean(train_seq_actually_used_by_model):.4f}, std={np.std(train_seq_actually_used_by_model):.4f}, min={np.min(train_seq_actually_used_by_model):.4f}, max={np.max(train_seq_actually_used_by_model):.4f}")
+            # else:
+            #     print(f"       触发极端值的训练序列为空或长度不足 (传递给模型的序列长度为 {len(current_history_for_model_input)}, 模型内部截取最后 {seq_len})。")
             use_arma_fallback_in_rolling = True
 
         if use_arma_fallback_in_rolling:
-            print(f"       此步骤 ({model_type} @索引 {i}) 回退到 Pure ARMA({p},{q})。");
+            # print(f"       此步骤 ({model_type} @索引 {i}) 回退到 Pure ARMA({p},{q})。");
             predicted_std_log_returns, _, _ = train_and_forecast_pure_arma(
                 current_history_for_model_input, seq_len, pred_len, p_ar=p, q_ma=q
             )
@@ -674,7 +691,7 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
                     not np.any(np.isnan(predicted_std_log_returns)) and \
                     not np.any(np.isinf(predicted_std_log_returns)) and \
                     not np.any(np.abs(predicted_std_log_returns) > extreme_value_threshold)):
-                print(f"警告: Pure ARMA({p},{q}) 回退的预测仍然无效/极端 ({model_type} @索引 {i}): {predicted_std_log_returns}. 使用零预测代替。")
+                # print(f"警告: Pure ARMA({p},{q}) 回退的预测仍然无效/极端 ({model_type} @索引 {i}): {predicted_std_log_returns}. 使用零预测代替。")
                 predicted_std_log_returns = np.zeros(pred_len)
         else:
             predicted_std_log_returns = predicted_std_log_returns_raw
@@ -703,7 +720,8 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
             first_step_residual = reconstructed_price_forecasts_this_window[0] - actual_price_levels_this_window[0]
             all_price_level_residuals.append(first_step_residual)
         else:
-            print(f"警告: 跳过长度不匹配的窗口 - 实际数据长度: {len(actual_price_levels_this_window)}, 预测长度: {len(reconstructed_price_forecasts_this_window)}, 要求长度: {pred_len}")
+            # print(f"警告: 跳过长度不匹配的窗口 - 实际数据长度: {len(actual_price_levels_this_window)}, 预测长度: {len(reconstructed_price_forecasts_this_window)}, 要求长度: {pred_len}")
+            pass
 
     if not all_predicted_price_levels_collected:
         return np.array([]), np.array([]), None, None
@@ -739,7 +757,7 @@ def rolling_forecast(data_df, original_price_col_name, log_return_col_name,
     # 修复: 最终安全检查，确保长度一致
     min_length = min(len(true_values), len(pred_values))
     if len(true_values) != len(pred_values):
-        print(f"警告: 最终数组长度不一致，截取到长度: {min_length}")
+        # print(f"警告: 最终数组长度不一致，截取到长度: {min_length}")
         true_values = true_values[:min_length]
         pred_values = pred_values[:min_length]
 
@@ -789,7 +807,7 @@ def train_and_forecast_pure_arma(scaled_log_return_series_history, seq_len, pred
         # Ensure it's a 1D array matching pred_len
         return np.array(forecast_val).flatten()[:pred_len], model_params, lb_test_result
     except Exception as e_arima:
-        print(f"警告: ARMA({p_ar},0,{q_ma}) 模型拟合失败: {e_arima}。返回零预测。")
+        # print(f"警告: ARMA({p_ar},0,{q_ma}) 模型拟合失败: {e_arima}。返回零预测。")
         return np.zeros(pred_len), None, None
 
 def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_name, 
@@ -839,7 +857,7 @@ def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_
                 not np.any(np.isnan(predicted_std_log_returns)) and \
                 not np.any(np.isinf(predicted_std_log_returns)) and \
                 not np.any(np.abs(predicted_std_log_returns) > extreme_value_threshold)):
-            print(f"警告: Pure ARMA({p},{q}) (在滚动窗口索引 {i}) 返回了无效/极端预测: {predicted_std_log_returns}. 使用零预测代替。")
+            # print(f"警告: Pure ARMA({p},{q}) (在滚动窗口索引 {i}) 返回了无效/极端预测: {predicted_std_log_returns}. 使用零预测代替。")
             predicted_std_log_returns = np.zeros(pred_len)
         
         predicted_log_returns_for_window = log_return_scaler.inverse_transform(
@@ -866,7 +884,8 @@ def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_
             first_step_residual = reconstructed_price_forecasts_this_window[0] - actual_price_levels_this_window[0]
             all_price_level_residuals.append(first_step_residual)
         else:
-            print(f"警告: 跳过长度不匹配的窗口 - 实际数据长度: {len(actual_price_levels_this_window)}, 预测长度: {len(reconstructed_price_forecasts_this_window)}, 要求长度: {pred_len}")
+            # print(f"警告: 跳过长度不匹配的窗口 - 实际数据长度: {len(actual_price_levels_this_window)}, 预测长度: {len(reconstructed_price_forecasts_this_window)}, 要求长度: {pred_len}")
+            pass
 
     if not all_predicted_price_levels_collected:
         return np.array([]), np.array([]), None, None
@@ -902,15 +921,27 @@ def rolling_forecast_pure_arma(data_df, original_price_col_name, log_return_col_
     # 修复: 最终安全检查，确保长度一致
     min_length = min(len(true_values), len(pred_values))
     if len(true_values) != len(pred_values):
-        print(f"警告: 最终数组长度不一致，截取到长度: {min_length}")
+        # print(f"警告: 最终数组长度不一致，截取到长度: {min_length}")
         true_values = true_values[:min_length]
         pred_values = pred_values[:min_length]
 
     return true_values, pred_values, first_window_model_info, lb_test_result
 
 def main(args):
-    log_return_col = 'log_return_gbp_cny' 
+    log_return_col = 'log_return' 
     test_set_ratio = 0.15  # 使用15%作为测试集
+
+    # 打印当前配置信息
+    print("="*80)
+    print("ARIMA+GARCH 英镑兑人民币预测系统配置")
+    print("="*80)
+    print(f"预测步长: {args.pred_lens}")
+    print(f"ARMA参数组合 (p,q): {list(zip(args.arma_p_values, args.arma_q_values))}")
+    print(f"训练窗口大小: {args.seq_lens}")
+    print(f"数据文件: {args.data_path}")
+    print(f"目标列: {args.target}")
+    print(f"测试集比例: {test_set_ratio*100}%")
+    print("="*80)
 
     try:
         data_df = load_and_prepare_data(args.root_path, args.data_path, args.target, log_return_col)
@@ -973,13 +1004,31 @@ def main(args):
         
         return configs
     
-    # 预测步长：1天、24天、30天、60天、90天、180天
-    pred_lens = [1, 24, 30, 60, 90, 180]  # 完整多步预测版本
+    # 预测步长：从命令行参数获取
+    pred_lens = args.pred_lens
     
-    # ARMA参数组合：(p=AR阶数, q=MA阶数)
-    arma_params = [(1, 0), (1, 1), (2, 0)]  # 扩展为完整的参数组合测试
-    # 序列长度测试：用于滚动窗口的历史数据长度
-    seq_lens_to_test = [1000, 500, 250, 125]  # 扩展的训练窗口大小
+    # ARMA参数组合：从命令行参数获取(p=AR阶数, q=MA阶数)
+    if len(args.arma_p_values) != len(args.arma_q_values):
+        print("错误: arma_p_values和arma_q_values长度必须相同")
+        return
+    arma_params = list(zip(args.arma_p_values, args.arma_q_values))
+    
+    # 参数验证
+    if not pred_lens:
+        print("错误: 预测步长列表不能为空")
+        return
+    if not arma_params:
+        print("错误: ARMA参数组合不能为空")
+        return
+    if not args.seq_lens:
+        print("错误: 训练窗口大小列表不能为空")
+        return
+    
+    print(f"将测试 {len(pred_lens)} 个预测步长 × {len(arma_params)} 个ARMA参数组合 × {len(args.seq_lens)} 个训练窗口")
+    print(f"预计总实验数量: {len(pred_lens) * len(arma_params) * len(args.seq_lens)} 个配置")
+    
+    # 序列长度测试：从命令行参数获取，用于滚动窗口的历史数据长度
+    seq_lens_to_test = args.seq_lens
     
     best_overall_metrics = {'MSE': float('inf'), 'model': None, 'p': None, 'q': None, 'seq_len': None, 'metrics': None}
     all_configs_comparison = {}
@@ -991,7 +1040,7 @@ def main(args):
         print(f"{'#'*80}")
     
         if num_train_points_for_first_window < current_seq_len:
-            print(f"警告: 初始训练数据点 ({num_train_points_for_first_window}) 少于当前序列长度 ({current_seq_len})。跳过此序列长度。")
+            # print(f"警告: 初始训练数据点 ({num_train_points_for_first_window}) 少于当前序列长度 ({current_seq_len})。跳过此序列长度。")
             continue
             
         # ==========================================
@@ -1053,7 +1102,7 @@ def main(args):
                 metrics_dict["Naive Baseline (PrevDay)"] = eval_metrics_naive
                 print(f"执行时间: {elapsed_time_naive:.2f}秒")
                 for name, val_metric in eval_metrics_naive.items():
-                    print(f"{name}: {val_metric:.8f}{'%' if name == 'MAPE' else ''}")
+                    print(f"{name}: {val_metric:.8f}{'%' if name in ['MAPE', 'MSPE'] else ''}")
 
             # ==========================================
             # 统一的模型配置循环
@@ -1098,7 +1147,7 @@ def main(args):
                     metrics_dict[model_name] = eval_metrics
                     print(f"执行时间: {elapsed_time:.2f}秒")
                     for name, val_metric in eval_metrics.items():
-                        print(f"{name}: {val_metric:.8f}{'%' if name == 'MAPE' else ''}")
+                        print(f"{name}: {val_metric:.8f}{'%' if name in ['MAPE', 'MSPE'] else ''}")
                     
                     # 输出Ljung-Box检验结果
                     if lb_test_result and 'ljung_box_tests' in lb_test_result:
@@ -1106,7 +1155,8 @@ def main(args):
                         for lag, test_result in lb_test_result['ljung_box_tests'].items():
                             print(f"  {lag}: 统计量={test_result['statistic']:.4f}, p值={test_result['p_value']:.4f}")
                 else:
-                    print(f"警告: {model_name} 模型无有效预测结果")
+                    # print(f"警告: {model_name} 模型无有效预测结果")
+                    pass
 
             # ==========================================
             # 保存结果和生成报告
@@ -1206,7 +1256,7 @@ def main(args):
         print(f"预测步长: {best_overall_metrics.get('pred_len', 1)}天")
         print(f"\n评估指标:")
         for metric_name, value in best_overall_metrics['metrics'].items():
-            print(f"  {metric_name}: {value:.8f}{'%' if metric_name == 'MAPE' else ''}")
+            print(f"  {metric_name}: {value:.8f}{'%' if metric_name in ['MAPE', 'MSPE'] else ''}")
     else:
         print("未能找到最佳模型。")
     
@@ -1218,7 +1268,7 @@ def main(args):
     print("   - Pure ARMA: 纯时间序列自回归移动平均模型")
     print("   - GARCH族模型: 包括ARCH、GARCH、EGARCH、GARCH-M等异方差模型")
     print("2. 预测步长: 1天、24天、30天、60天、90天、180天的多步预测")
-    print("3. 评估指标: MSE、RMSE、MAE、MAX_AE、MAPE、R²")
+    print("3. 评估指标: MSE、RMSE、MAE、MAX_AE、MAPE、MSPE、R²")
     print("4. 测试设置: 固定最后150个数据点作为测试集")
     print("5. 诊断检验: Ljung-Box检验用于残差序列相关性检验")
     print("="*100)
@@ -1229,7 +1279,7 @@ def main(args):
 
 def generate_summary_table(all_results_summary, results_dir_path, arima_params_label):
     summary_data = {'Model': []}
-    metric_names = ['MSE', 'RMSE', 'MAE', 'MAX_AE', 'MAPE', 'R2', 'Time(s)']  # 确保包含MAX_AE
+    metric_names = ['MSE', 'RMSE', 'MAE', 'MAX_AE', 'MAPE', 'MSPE', 'R2', 'Time(s)']  # 添加MSPE指标
     
     pred_lengths_present = sorted(all_results_summary.keys())
     if not pred_lengths_present: return pd.DataFrame()
@@ -1265,7 +1315,7 @@ def generate_summary_table(all_results_summary, results_dir_path, arima_params_l
                     if metric_n == 'Time(s)': 
                         formatted_val = f"{val:.2f}"  # 执行时间保持2位小数
                     else:
-                        formatted_val = f"{val:.8f}{'%' if metric_n == 'MAPE' else ''}"  # 所有评估指标统一8位小数
+                        formatted_val = f"{val:.8f}{'%' if metric_n in ['MAPE', 'MSPE'] else ''}"  # MAPE和MSPE显示百分号
                     summary_data[f'{metric_n}_{pred_len_val}'].append(formatted_val)
             else:
                 for metric_n in metric_names:
@@ -1279,12 +1329,36 @@ def generate_summary_table(all_results_summary, results_dir_path, arima_params_l
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='ARIMA+GARCH汇率预测 (GBPCNY, 对数收益率, 多步预测, 15%测试集)')
+    parser = argparse.ArgumentParser(
+        description='ARIMA+GARCH汇率预测 (GBPCNY, 对数收益率, 多步预测, 15%测试集)',
+        epilog='''
+示例用法:
+  默认配置:
+    python run_arima_garch_jpy_last150test.py
+  
+  跳过1步预测，只保留p1q1:
+    python run_arima_garch_jpy_last150test.py --pred_lens 24 30 60 90 180 --arma_p_values 1 --arma_q_values 1
+  
+  自定义所有参数:
+    python run_arima_garch_jpy_last150test.py --pred_lens 30 60 --arma_p_values 1 2 --arma_q_values 1 0 --seq_lens 500 250
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('--root_path', type=str, default='./dataset/', help='数据根目录')
     parser.add_argument('--data_path', type=str, default='英镑兑人民币_short_series.csv', help='数据文件路径')
-    parser.add_argument('--target', type=str, default='rate', help='原始汇率目标变量列名')
+    parser.add_argument('--target', type=str, default='Close', help='原始汇率目标变量列名')
     parser.add_argument('--seq_len', type=int, default=125, help='ARIMA+GARCH历史对数收益率长度')
     parser.add_argument('--step_size', type=int, default=1, help='滚动窗口步长')
+    
+    # 新增参数
+    parser.add_argument('--pred_lens', type=int, nargs='+', default=[1, 24, 30, 60, 90, 180], 
+                       help='预测步长列表，例如: --pred_lens 24 30 60 90 180')
+    parser.add_argument('--arma_p_values', type=int, nargs='+', default=[1, 1, 2], 
+                       help='ARMA模型p参数列表，例如: --arma_p_values 1')
+    parser.add_argument('--arma_q_values', type=int, nargs='+', default=[0, 1, 0], 
+                       help='ARMA模型q参数列表，例如: --arma_q_values 1')
+    parser.add_argument('--seq_lens', type=int, nargs='+', default=[1000, 500, 250, 125], 
+                       help='训练窗口大小列表，例如: --seq_lens 1000 500 250 125')
     
     args = parser.parse_args()
     main(args) 
