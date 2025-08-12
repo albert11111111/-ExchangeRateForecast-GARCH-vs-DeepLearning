@@ -41,10 +41,25 @@ pip install numpy pandas matplotlib scikit-learn statsmodels arch scipy tqdm sea
 
 ```
 Time-Series-Library-main/
-├── run_arima_garch_jpy_last150test.py  # 主程序文件
-├── dataset/
-│   └── 英镑兑人民币_short_series.csv   # 数据文件
-└── README_ARIMA_GARCH.md              # 说明文档（本文件）
+├── run.py                             # 深度学习模型主程序
+├── run_arima_garch_jpy_last150test.py # ARIMA+GARCH模型主程序
+├── dataset/                           # 数据文件目录
+│   ├── 英镑兑人民币_short_series.csv
+│   ├── sorted_output_file.csv
+│   └── ...
+├── final/                            # 神经网络模型目录
+│   ├── run_ffnn_jpy_last150test.py   # 前馈神经网络
+│   ├── gann_forecast.py              # 遗传算法神经网络
+│   ├── jausdata.csv                  # 日元数据
+│   ├── ukcndata.csv                  # 英镑数据
+│   └── ...
+├── scripts/                          # 运行脚本目录
+│   └── long_term_forecast/
+├── models/                           # 模型定义
+├── layers/                           # 网络层定义
+├── utils/                            # 工具函数
+├── exp/                              # 实验相关
+└── README.md                         # 说明文档（本文件）
 ```
 
 ## 🚀 快速开始
@@ -297,6 +312,9 @@ python run_arima_garch_jpy_last150test.py \
 - 放在 `./dataset/` 目录下，例如：`英镑兑人民币_20250324_102930.csv`
 
 ### 一键运行方法
+
+**重要**：确保`run.py`文件位于项目根目录（已经修复）。
+
 进入项目根目录，执行如下命令（以Autoformer为例）：
 
 ```bash
