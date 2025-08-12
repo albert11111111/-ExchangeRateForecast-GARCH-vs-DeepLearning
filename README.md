@@ -354,4 +354,143 @@ python convert_metrics_to_csv.py
 ---
 如需自定义参数或了解更多细节，请参考各脚本和 `run.py` 注释。
 
+## 🧬 神经网络时间序列预测模型
+
+本系统还包含基于神经网络和遗传算法优化的时间序列预测模型，位于 `final/` 文件夹中。这些模型特别适用于汇率预测任务。
+
+### 模型类型
+
+#### 1. 前馈神经网络 (FFNN)
+- **文件**: `run_ffnn_jpy_last150test.py`
+- **功能**: 基于PyTorch的前馈神经网络，支持多种超参数组合
+- **特点**: 
+  - 滚动窗口预测
+  - 标准化预处理
+  - 自动超参数网格搜索
+  - 详细的性能评估和可视化
+
+#### 2. 遗传算法神经网络 (GANN)
+- **文件**: `gann_forecast.py`, `ann.py`
+- **功能**: 使用遗传算法优化神经网络结构和参数
+- **特点**:
+  - 二进制编码的网络架构搜索
+  - 自动确定最佳隐藏层数、神经元数量、激活函数、学习率
+  - 支持反馈和非反馈模式
+  - MAE和MSE损失函数可选
+
+#### 3. 其他变体
+- **归一化GANN**: `gann_forecast_normalized_out150.py` - 使用MinMax归一化
+- **滚动预测GANN**: `gann_rolling_forecast.py` - 滑动窗口多步预测
+- **基础遗传算法**: `genatic.py` - 简化版遗传算法优化
+
+### 数据要求
+
+确保在 `final/` 文件夹中有以下数据文件：
+- `jausdata.csv` - 美元日元汇率数据（用于FFNN和部分GANN模型）
+- `ukcndata.csv` - 英镑人民币汇率数据（用于GANN模型）
+
+数据格式要求：
+```csv
+Date,Rate
+2020-01-01,110.5
+2020-01-02,110.8
+...
+```
+
+### 快速开始
+
+#### 运行前馈神经网络模型
+```bash
+cd final/
+python run_ffnn_jpy_last150test.py --root_path ./dataset/ --data_path sorted_output_file.csv --target_col rate --target_suffix usd_jpy --test_size 150
+```
+
+**参数说明**：
+- `--root_path`: 数据根目录（默认: `./dataset/`）
+- `--data_path`: 数据文件名（默认: `sorted_output_file.csv`）
+- `--target_col`: 目标列名（默认: `rate`）
+- `--target_suffix`: 数据标识后缀（默认: `usd_jpy`）
+- `--test_size`: 测试集大小（默认: 150）
+
+#### 运行遗传算法神经网络模型
+```bash
+cd final/
+python gann_forecast.py
+```
+
+或运行基础ANN模型：
+```bash
+cd final/
+python ann.py
+```
+
+#### 运行归一化GANN模型
+```bash
+cd final/
+python gann_forecast_normalized_out150.py
+```
+
+### 输出结果
+
+#### FFNN模型输出
+- **结果目录**: `ffnn_results_{target_suffix}_1step_last{test_size}test/`
+- **包含文件**:
+  - 各配置子目录（如 `lb120_hs16x8_lr0.1_ep100_bs64/`）
+  - 性能图表：`plot_price_level_*.png`, `error_analysis_*.png`
+  - 结果数据：`results_data_*.pkl`
+  - 汇总表格：`summary_table_FFNN_*.csv`
+
+#### GANN模型输出
+- **预测图表**: `prediction_curve_GFF-MAE.png`, `prediction_curve_GFB-MSE.png` 等
+- **训练历史**: `history.png`, `loss_curve.png`
+- **控制台输出**: 最佳网络架构参数和性能指标
+
+### 评估指标
+
+所有模型都提供以下评估指标：
+- **AAE/MAE**: 平均绝对误差
+- **MAPE**: 平均绝对百分比误差
+- **MSE**: 均方误差
+- **RMSE**: 均方根误差
+- **Max AE**: 最大绝对误差
+- **R²**: 决定系数
+
+### 模型配置
+
+#### FFNN超参数
+- **Lookback**: 历史窗口大小（默认: 120）
+- **Hidden Layers**: 隐藏层配置（默认: [16, 8]）
+- **Learning Rate**: 学习率（默认: 0.1）
+- **Epochs**: 训练轮数（默认: 100）
+- **Batch Size**: 批大小（默认: 64）
+
+#### GANN参数
+- **TIME_STEP**: 时间步长（默认: 30）
+- **POP_SIZE**: 种群大小（默认: 100）
+- **N_GEN**: 进化代数（默认: 25）
+- **ACTIVATION_FUNCS**: 激活函数选择（sigmoid, tanh, linear）
+- **HIDDEN_UNITS**: 隐藏单元数选择（4, 8, 16）
+
+### 注意事项
+
+1. **依赖包要求**:
+   ```bash
+   # 基础科学计算包
+   pip install numpy pandas matplotlib seaborn scikit-learn scipy tqdm
+   
+   # 深度学习框架
+   pip install torch torchvision torchaudio  # PyTorch
+   pip install tensorflow  # TensorFlow
+   
+   # 遗传算法库
+   pip install deap
+   
+   # 或者一次性安装所有依赖
+   pip install torch tensorflow scikit-learn deap tqdm matplotlib seaborn numpy pandas scipy
+   ```
+
+2. **数据路径**: 确保数据文件位于正确的路径，或修改代码中的路径配置
+
+3. **计算资源**: GANN模型由于涉及遗传算法优化，计算时间较长，建议在性能较好的机器上运行
+
 ---
