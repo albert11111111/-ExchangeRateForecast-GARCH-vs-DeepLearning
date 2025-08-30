@@ -1,0 +1,17 @@
+  name: Claude Code Review
+
+  on:
+    pull_request:
+      types: [opened, synchronize]
+
+  jobs:
+    claude-review:
+      runs-on: ubuntu-latest
+      permissions:
+        contents: read
+        pull-requests: write
+      steps:
+        - uses: actions/checkout@v4
+        - uses: anthropic/claude-code@main
+          with:
+            anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
